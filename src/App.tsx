@@ -1,122 +1,147 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+type Message = {
+  id: number;
+  role: "user" | "assistant" | "other";
+  speaker: string;
+  timestamp?: string;
+  content: string;
+};
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+const MESSAGE_START =
+  /^\s*(?:(\[[^\]]+\]|\d{4}-\d{2}-\d{2}[T ][\d:.+-]+Z?)\s*)?(You|User|Assistant|Duck\.ai)\s*:\s*/i;
 
-      <div className="ticks"></div>
+function parseConversation(text: string): Message[] {
+  const messages: Message[] = [];
+  let current: Omit<Message, "id"> | null = null;
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+  function saveCurrent() {
+    if (!current) return;
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    const content = current.content.trim();
+    if (content) {
+      messages.push({ ...current, id: messages.length, content });
+    }
+  }
+
+  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+    const userHeader = line.match(
+      /^\s*User prompt \d+ of \d+ - (.+?):\s*$/
+    );
+    const assistantHeader = line.match(/^\s*GPT-6 Luna:\s*$/);
+
+    if (userHeader || assistantHeader) {
+      saveCurrent();
+
+      current = userHeader
+        ? {
+            role: "user",
+            speaker: "User",
+            timestamp: userHeader[1],
+            content: "",
+          }
+        : {
+            role: "assistant",
+            speaker: "GPT-6 Luna",
+            content: "",
+          };
+
+      continue;
+    }
+
+    if (/^\s*[-=]{4,}\s*$/.test(line)) continue;
+
+    if (current) {
+      current.content += `${current.content ? "\n" : ""}${line}`;
+    }
+  }
+
+  saveCurrent();
+  return messages;
 }
 
-export default App
+
+
+function App() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+
+  async function handleFile(file?: File) {
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+      setError("Please choose a .txt file.");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      setMessages(parseConversation(text));
+      setFileName(file.name);
+      setError("");
+    } catch {
+      setError("Could not read that file.");
+    }
+  }
+
+  return (
+    <main className="app">
+      <header className="header">
+        <div>
+          <h1>Chat transcript</h1>
+          <p>Upload a text export to view the conversation.</p>
+        </div>
+
+        <label className="upload-button">
+          Choose text file
+          <input
+            type="file"
+            accept=".txt,text/plain"
+            onChange={(event) => handleFile(event.target.files?.[0])}
+          />
+        </label>
+      </header>
+
+      {error && <p className="error" role="alert">{error}</p>}
+
+      {!messages.length ? (
+        <section
+          className="empty-state"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            handleFile(event.dataTransfer.files[0]);
+          }}
+        >
+          <strong>Drop a .txt file here</strong>
+          <span>or use the button above to select a file.</span>
+        </section>
+      ) : (
+        <section className="conversation" aria-label="Conversation">
+          <div className="file-label">{fileName}</div>
+
+          {messages.map((message) => (
+            <details
+              className={`message ${message.role}`}
+              key={message.id}
+              open
+            >
+              <summary>
+                <span className="speaker">{message.speaker}</span>
+                {message.timestamp && (
+                  <time className="timestamp">{message.timestamp}</time>
+                )}
+                <span className="toggle" aria-hidden="true" />
+              </summary>
+              <div className="message-content">{message.content}</div>
+            </details>
+          ))}
+        </section>
+      )}
+    </main>
+  );
+}
+
+export default App;
