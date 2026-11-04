@@ -9,9 +9,6 @@ type Message = {
   content: string;
 };
 
-const MESSAGE_START =
-  /^\s*(?:(\[[^\]]+\]|\d{4}-\d{2}-\d{2}[T ][\d:.+-]+Z?)\s*)?(You|User|Assistant|Duck\.ai)\s*:\s*/i;
-
 function parseConversation(text: string): Message[] {
   const messages: Message[] = [];
   let current: Omit<Message, "id"> | null = null;
